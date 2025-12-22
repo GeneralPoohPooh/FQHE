@@ -53,7 +53,7 @@ def build_hamiltonian(basis, n_orbitals):
                 m_out = list(set(state1) - set(state2))
                 m_in = list(set(state2) - set(state1))
 
-                # Angular momentum conversion
+                # Angular momentum conservtion
                 if sum(m_out) == sum(m_in):
                     H[i, j] = V_scatter
                     H[j, i] = V_scatter
@@ -120,8 +120,10 @@ T_range = np.linspace(0.1, 2.5, 50)
 S_vals = [get_entropy(t, mu) for t in T_range]
 
 plt.figure(figsize=(10, 6))
-plt.plot(T_range, S_vals, color='royalblue', lw=2, label="Thermal Entropy Function")
-plt.axvline(x=0.4, color='orange', linestyle='--', label='Haldane Gap Scale ($V_1$)')
+plt.plot(T_range, S_vals, color='royalblue', lw=2, marker='o', markersize=6,
+         markerfacecolor='white', label="Thermal Entropy Function")
+plt.axvline(x=0.4, color='orange', linestyle='--',
+            label='Haldane Gap Scale ($V_1$)')
 plt.xlabel("Temperature $T$", fontsize=12)
 plt.ylabel("Entropy $S/k_B$", fontsize=12)
 plt.title("Thermal Entropy of nu = 1/3 ", fontsize=14)
