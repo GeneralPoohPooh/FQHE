@@ -1,0 +1,130 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from itertools import combinations
+from scipy.linalg import eigh
+
+# =================================================================
+# 1. PHYSICAL PARAMETERS
+# =================================================================
+N_phi = 12  # Number of states in LLL
+N_range = [3, 4 , 5]  # Particle sectors (N=4 corresponds to nu=1/3 for N_phi=12, here simplified) 3,5 are due to grand canonical ensemble
+kB = 1.0  # Boltzmann constant
+V1 = 1.5  # Haldane Pseudopotential
+alpha = 0.1  # edge potential strength
+V_scatter = 0.3  # scattering elements strength
+mu = 1.0  # Chem Pot.
+
+# =================================================================
+# 2. BASIC FUNCTIONS
+# =================================================================
+
+def get_basis(n_particles, n_orbitals):
+    """ Generates the Hilbert space """
+    return list(combinations(range(n_orbitals), n_particles))
+
+
+def build_hamiltonian(basis, n_orbitals):
+    """ Constructs the Hamiltonian matrix H , H_ii (Diagonal) ,H_ij (Off-diagonal): Scattering elements """
+    dim = len(basis)
+    H = np.zeros((dim, dim))
+    center = (n_orbitals - 1) / 2
+
+    for i, state1 in enumerate(basis):
+        # --- 1. DIAGONAL ELEMENTS : Penalize nearest-neighbor occupancy Haldane psuedopotenials  ---
+        e_int = 0 # Intial interaction energy
+        for idx in range(len(state1)):
+            for jdx in range(idx + 1, len(state1)):
+                if abs(state1[idx] - state1[jdx]) == 1:
+                    e_int += V1
+
+        #Harmonic trap pulling electrons toward the center
+        e_trap = alpha * sum((m - center) ** 2 for m in state1)
+        H[i, i] = e_int + e_trap #diagonal element
+
+        # --- 2. OFF-DIAGONAL ELEMENTS - Scattering elements  ---
+        # We look for pairs of states that differ by exactly two particles, models interaction V ~ a_k* a_l* a_m a_n
+        for j in range(i + 1, dim):
+            state2 = basis[j]
+
+            # searching for changed orbitals
+            diff = set(state1) ^ set(state2)
+
+            if len(diff) == 4:  # 2 particles moved out, 2 new particles moved in
+                m_out = list(set(state1) - set(state2))
+                m_in = list(set(state2) - set(state1))
+
+                # Angular momentum conversion
+                if sum(m_out) == sum(m_in):
+                    H[i, j] = V_scatter
+                    H[j, i] = V_scatter
+
+    return H
+
+
+# =================================================================
+# 2. SPECTRUM GENERATION
+# =================================================================
+all_energies = []
+all_N = []
+
+for N in N_range:
+    basis = get_basis(N, N_phi)
+    print(f"  Calculating Sector N={N} (Matrix size: {len(basis)}x{len(basis)})...")
+
+    # Hamiltonian
+    H = build_hamiltonian(basis, N_phi)
+
+    # solving schrodinger -> eigen energies
+    eigenvalues = eigh(H, eigvals_only=True)
+
+    all_energies.extend(eigenvalues)
+    all_N.extend([N] * len(eigenvalues))
+
+all_E = np.array(all_energies)
+all_N = np.array(all_N)
+
+
+# =================================================================
+# 3. Grand canonical ensemble
+# =================================================================
+def get_entropy(T, mu_val):
+    """
+    Calculates Thermal Entropy S using the Log-Sum-Exp trick for numerical stability.
+    This prevents computer overflow/underflow at low temperatures.
+    """
+    if T < 0.05: return 0.0  # Limit for T -> 0
+
+    beta = 1.0 / (kB * T)
+
+    # Grand Canonical weights: exp(-beta * (E - mu*N))
+    exponents = -beta * (all_E - mu_val * all_N)
+    max_exp = np.max(exponents)
+    weights = np.exp(exponents - max_exp)
+
+    # Partition Function Z
+    sum_w = np.sum(weights)
+    log_Z = np.log(sum_w) + max_exp
+
+    # Thermal Averages
+    avg_E = np.sum(all_E * weights) / sum_w
+    avg_N = np.sum(all_N * weights) / sum_w
+
+    # Entropy: S = kB * (ln Z + beta * (<E> - mu * <N>))
+    return kB * (log_Z + beta * (avg_E - mu_val * avg_N))
+
+
+# =================================================================
+# 4. PLOT
+# =================================================================
+T_range = np.linspace(0.1, 2.5, 50)
+S_vals = [get_entropy(t, mu) for t in T_range]
+
+plt.figure(figsize=(10, 6))
+plt.plot(T_range, S_vals, color='royalblue', lw=2, label="Thermal Entropy Function")
+plt.axvline(x=0.4, color='orange', linestyle='--', label='Haldane Gap Scale ($V_1$)')
+plt.xlabel("Temperature $T$", fontsize=12)
+plt.ylabel("Entropy $S/k_B$", fontsize=12)
+plt.title("Thermal Entropy of nu = 1/3 ", fontsize=14)
+plt.grid(True, alpha=0.3)
+plt.legend()
+plt.show()
